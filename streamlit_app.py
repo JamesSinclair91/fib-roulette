@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+#from  scipy import stats
 from functools import lru_cache
 from random import randint
 
@@ -22,36 +23,65 @@ class Session:
         self.target_profit = target_profit
         self.current_bet = unit_bet
         self.fib_index = 1  # Start at Fibonacci index 1
+        self.largest_fib_index = 1
+        self.largest_multiplier = 1
         self.spins = 0
         self.wins = 0
         self.losses = 0
         self.cycle = 1
 
     def place_bet(self, won):
+        # Sets the current fib index
         current_fib_index = self.fib_index
+        
+        # Ensures the largest fib index of the session is tracked
+        if current_fib_index > self.largest_fib_index:
+            self.largest_fib_index = current_fib_index
+            self.largest_fib_multiplier = fib(current_fib_index)
+
+        # Sets the current bet
         self.current_bet = self.unit_bet * fib(current_fib_index)
 
-        if self.current_bet > self.balance:
-            self.current_bet = self.balance
+        
+        # Check if you can make the current bet, otherwise bet the remaining balance
+        #self.current_bet = min(self.current_bet, self.balance)
+        
+        # Only bet up to the maximum bet
+        #if self.max_bet > 0 and self.current_bet > self.max_bet:
+        #    self.current_bet = self.max_bet
 
-        if self.max_bet > 0 and self.current_bet > self.max_bet:
-            self.current_bet = self.max_bet
+        # Check if you can make the current bet, otherwise bet the remaining balance
+        self.current_bet = min(self.current_bet, self.balance, self.max_bet)
 
+
+        # By placing the bet, balances reduces
         self.balance -= self.current_bet
 
+        # On a win you get 3x your bet, the fib index resets to 1, and number of wins is incremented
         if won:
             self.balance += self.current_bet * 3
             self.fib_index = 1
             self.wins += 1
+        
+        # On a loss, the fib index and number of losses is incremented
         else:
             self.fib_index += 1
             self.losses += 1
 
+        # Regardles of outcome, the number of spins increments.
         self.spins += 1
+        
         return current_fib_index
 
+    # Dynamic profit calculation
+    @property
+    def actual_profit(self):
+        return self.balance - self.start_balance
+    
+    # End the session if profit exceeds target or balance is 0
     def reached_target(self):
-        return self.balance - self.start_balance >= self.target_profit or self.balance <= 0
+        #return self.balance - self.start_balance >= self.target_profit or self.balance <= 0
+        return self.actual_profit >= self.target_profit or self.balance <= 0
 
 
 def spin_roulette():
@@ -67,28 +97,28 @@ start_balance = st.number_input("Starting Balance",
                                 min_value=0.01, 
                                 step=0.01, 
                                 value=1500.00,
-                                format="%2f",
+                                format="%.2f",
                                 placeholder="Enter a starting balance"
                                 )
 unit_bet = st.number_input("Unit Bet", 
                                 min_value=0.01, 
                                 step=0.01, 
                                 value=5.00,
-                                format="%2f",
+                                format="%.2f",
                                 placeholder="Enter a unit bet"
                                 )
 max_bet = st.number_input("Maximum Bet (optional)",
                                 min_value=0.0, 
                                 step=0.01, 
                                 value=None,
-                                format="%2f", 
+                                format="%.2f", 
                                 placeholder="Leave blank for no max bet"
                                 )
 target_profit = st.number_input("Target Profit", 
                                 min_value=0.0, 
                                 step=0.01, 
                                 value=100.00,
-                                format="%2f",
+                                format="%.2f",
                                 placeholder="Enter a profit target (£)"
                                 )
 max_spins = st.number_input("Maximum Spins (optional)", 
@@ -132,41 +162,32 @@ if st.button("Run Simulation"):
 
         session.cycle += 1 if win else 0
 
-    stats = {
-        'result': post_spin_balance - session.start_balance,
-        'total_spins': session.spins,
-        'cycles': max(r['cycle'] for r in results),
-        'win_pct': session.wins / session.spins,
-        'largest_bet': max(r['current_bet'] for r in results),
-        'largest_fib_index': max(r['fib_index'] for r in results),
-        #'largest_multiplier': max(r['fib_multiplier'] for r in results),
-        #'odds': (25 / 37) ** max(r['fib_index'] for r in results)
-    }
-
+    # Check to see if integers or floats should be used
     use_integer = True if session.start_balance % 1 == 0 and session.unit_bet % 1 == 0 else False
-   
 
     def format_number(value):
         return f"{value:,.0f}" if value.is_integer() else f"{value:,.2f}"
 
     
+    # Formatted stats
     stats_target_amount = format_number(session.target_profit)
     stats_target_pct = "{:.2%}".format(session.target_profit / session.start_balance)
     stats_target_units = format_number(session.target_profit / session.unit_bet)
 
-    stats_result_amount = format_number(stats['result'])
-    stats_result_pct = "{:.2%}".format(stats['result'] / session.start_balance)
-    stats_result_units = format_number(stats['result'] / session.unit_bet)
+    stats_result_amount = format_number(session.actual_profit)
+    stats_result_pct = "{:.2%}".format(session.actual_profit / session.start_balance)
+    stats_result_units = format_number(session.actual_profit / session.unit_bet)
 
-    stats_total_spins = "{:,.0f}".format(stats['total_spins'])
-    stats_cycles = "{:,.0f}".format(stats['cycles'])
-
-    stats_win_pct = "{:.2%}".format(stats['win_pct'])
-
-    stats_largest_bet = format_number(stats['largest_bet'])
-    stats_fib_index = "{:,.0f}".format(stats['largest_fib_index'])
-    stats_largest_multiplier = "{:,.0f}".format(fib(stats['largest_fib_index']))
-    stats_odds = "{:.2%}".format((25 / 37) ** stats['largest_fib_index'])
+    stats_total_spins = "{:,.0f}".format(session.spins)
+    stats_wins = "{:,.0f}".format(session.wins)
+    stats_win_pct = "{:.2%}".format(session.wins / session.spins)
+    stats_cycles = "{:,.0f}".format(session.wins + (0 if results[-1]['won_or_lost'] == "Won" else 1))
+    stats_losses = "{:,.0f}".format(session.losses)
+    
+    stats_fib_index = "{:,.0f}".format(session.largest_fib_index)
+    stats_largest_multiplier = "{:,.0f}".format(session.largest_fib_multiplier)
+    stats_largest_bet = format_number(session.largest_fib_multiplier * session.unit_bet)
+    stats_odds = "{:.2%}".format((25 / 37) ** session.largest_fib_index)
 
     # Display results
     st.subheader("Simulation Results")
@@ -175,20 +196,30 @@ if st.button("Run Simulation"):
             Target: £{stats_target_amount} ({stats_target_pct}) ({stats_target_units} units)
             Result: £{stats_result_amount} ({stats_result_pct}) ({stats_result_units} units)
             
-            Total Spins: {stats_total_spins}
+            Total Spins: {stats_total_spins} (Wins: {stats_wins} / Losses: {stats_losses})
             Cycles: {stats_cycles}
-            Wins: {stats_win_pct}
+            Win Rate: {stats_win_pct}     (vs expected 32.43%)
+            This simulation won Only xxx% of all scenarios outperformed this one
             
             Largest Bet: £{stats_largest_bet} (Index: {stats_fib_index} / Multipler: {stats_largest_multiplier}x)
             Odds on largest Fib Index: {stats_odds}
             """)
     
-    
-    #stats_table = pd.DataFrame(stats,index=[0])
-    #st.dataframe(stats_table, hide_index=True)
-
-
-
+ 
     st.subheader("Detailed Spin Results")
     results_table = pd.DataFrame(results)
-    st.dataframe(results_table, hide_index=True)
+    st.dataframe(results_table, hide_index=True, use_container_width=False)
+
+
+# To Add:
+# Add Profit graph (0 is bold line)
+# Add binom distribution to stats
+# Format: balances / current bet / winnings / profit
+# Wheel number colours
+# Bold where Fib index = 1
+# Alternate red and blue for cycles
+# Winnings "" where nil
+# Profit column heatmap
+# Win/Loss %s
+# Checkbox to switch between units
+

@@ -42,17 +42,16 @@ class Session:
         # Sets the current bet
         self.current_bet = self.unit_bet * fib(current_fib_index)
 
-        
         # Check if you can make the current bet, otherwise bet the remaining balance
-        #self.current_bet = min(self.current_bet, self.balance)
+        self.current_bet = min(self.current_bet, self.balance)
         
         # Only bet up to the maximum bet
-        #if self.max_bet > 0 and self.current_bet > self.max_bet:
-        #    self.current_bet = self.max_bet
+        if self.max_bet > 0 and self.current_bet > self.max_bet:
+            self.current_bet = self.max_bet
 
+        ### Maybe quicker - but throws weird error ###
         # Check if you can make the current bet, otherwise bet the remaining balance
-        self.current_bet = min(self.current_bet, self.balance, self.max_bet)
-
+        #self.current_bet = min(self.current_bet, self.balance, self.max_bet)
 
         # By placing the bet, balances reduces
         self.balance -= self.current_bet

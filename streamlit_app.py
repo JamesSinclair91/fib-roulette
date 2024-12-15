@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
-#from  scipy import stats
+from  scipy.stats import binom
 from functools import lru_cache
 from random import randint
+import altair as alt
 
 
 # Memoized Fibonacci calculation
@@ -25,15 +26,15 @@ class Session:
         self.fib_index = 1  # Start at Fibonacci index 1
         self.largest_fib_index = 1
         self.largest_multiplier = 1
+        self.cycle = 1
         self.spins = 0
         self.wins = 0
         self.losses = 0
-        self.cycle = 1
 
     def place_bet(self, won):
         # Sets the current fib index
         current_fib_index = self.fib_index
-        
+                
         # Ensures the largest fib index of the session is tracked
         if current_fib_index > self.largest_fib_index:
             self.largest_fib_index = current_fib_index
@@ -42,16 +43,11 @@ class Session:
         # Sets the current bet
         self.current_bet = self.unit_bet * fib(current_fib_index)
 
-        # Check if you can make the current bet, otherwise bet the remaining balance
-        self.current_bet = min(self.current_bet, self.balance)
-        
-        # Only bet up to the maximum bet
-        if self.max_bet > 0 and self.current_bet > self.max_bet:
-            self.current_bet = self.max_bet
-
-        ### Maybe quicker - but throws weird error ###
-        # Check if you can make the current bet, otherwise bet the remaining balance
-        #self.current_bet = min(self.current_bet, self.balance, self.max_bet)
+        # Current bet is always the minimum of current bet, balance, max bet (if applicable)
+        if self.max_bet > 0:
+            self.current_bet = min(self.current_bet, self.balance, self.max_bet)
+        else:
+            self.current_bet = min(self.current_bet, self.balance)
 
         # By placing the bet, balances reduces
         self.balance -= self.current_bet
@@ -87,6 +83,22 @@ def spin_roulette():
     spin_result = randint(0, 36)
     return spin_result, 25 <= spin_result <= 36
 
+def format_number(value):
+    return f"{value:,.0f}" if value.is_integer() else f"{value:,.2f}"
+
+def cdf_message(value):
+    if value <= 0.1: # 0-10% (10% band)
+        return f'Very bad luck, there was a'
+    elif value <= 0.25: # 10-25% (15% band)
+        return f'Unlucky, there was a'
+    elif value <= 0.5: # 25-50% (25% band)
+        return f'Below average, there was a'
+    elif value <= 0.75: # 50-75% (25% band)
+        return f'Above average, there was only a'
+    elif value <= 0.9: # 75-90% (15% band)
+        return f'Fortunate, there was only a'
+    else: # 90-100% (10% band)
+        return f'Very lucky! There was only a'
 
 # Streamlit interface
 st.title("Fibonacci Dozens Betting Simulator")
@@ -129,9 +141,16 @@ max_spins = st.number_input("Maximum Spins (optional)",
                                 )
 
 if st.button("Run Simulation"):
+    # Create a session object
     session = Session(start_balance, unit_bet, max_bet or None, target_profit)
+    
+    # Check to see if integers or floats should be used
+    use_integer = True if session.start_balance % 1 == 0 and session.unit_bet % 1 == 0 else False
+    
+    # Initialize an empty list to store results of each spin for this session
     results = []
 
+    # Continue to make bets until max spins reached or profit target reached or run out of money
     while (max_spins is None or session.spins < max_spins) and not session.reached_target():
         pre_spin_balance = session.balance
         number, win = spin_roulette()
@@ -159,16 +178,13 @@ if st.button("Run Simulation"):
             'loss_pct': session.losses / session.spins
         })
 
-        session.cycle += 1 if win else 0
+        # Increment cycle number if still playing (and starting new cycle)
+        session.cycle += 1 if (win and not session.reached_target()) else 0
 
-    # Check to see if integers or floats should be used
-    use_integer = True if session.start_balance % 1 == 0 and session.unit_bet % 1 == 0 else False
+    ########## Create dataframe of results ##########
+    results_table = pd.DataFrame(results)
 
-    def format_number(value):
-        return f"{value:,.0f}" if value.is_integer() else f"{value:,.2f}"
-
-    
-    # Formatted stats
+    ########## Formatted stats ##########
     stats_target_amount = format_number(session.target_profit)
     stats_target_pct = "{:.2%}".format(session.target_profit / session.start_balance)
     stats_target_units = format_number(session.target_profit / session.unit_bet)
@@ -180,45 +196,92 @@ if st.button("Run Simulation"):
     stats_total_spins = "{:,.0f}".format(session.spins)
     stats_wins = "{:,.0f}".format(session.wins)
     stats_win_pct = "{:.2%}".format(session.wins / session.spins)
-    stats_cycles = "{:,.0f}".format(session.wins + (0 if results[-1]['won_or_lost'] == "Won" else 1))
+    stats_cycles = "{:,.0f}".format(session.cycle)
     stats_losses = "{:,.0f}".format(session.losses)
     
     stats_fib_index = "{:,.0f}".format(session.largest_fib_index)
-    stats_largest_multiplier = "{:,.0f}".format(session.largest_fib_multiplier)
-    stats_largest_bet = format_number(session.largest_fib_multiplier * session.unit_bet)
     stats_odds = "{:.2%}".format((25 / 37) ** session.largest_fib_index)
+    
+    if session.max_bet > 0:
+        stats_largest_multiplier = "{:,.0f}".format(min(session.largest_fib_multiplier, session.max_bet / session.unit_bet))
+        stats_largest_bet = format_number(min(session.largest_fib_multiplier * session.unit_bet, session.max_bet))
+    else:
+        stats_largest_multiplier = "{:,.0f}".format(session.largest_fib_multiplier)
+        stats_largest_bet = format_number(session.largest_fib_multiplier * session.unit_bet)
+    
+    # Calculate the cumulative distribution function of this session.
+    cdf = binom.cdf(session.wins, session.spins, 12/37)
+    #stats_cdf = "{:.2%}".format(cdf)
+    message = f'{cdf_message(cdf)} {"{:.2%}".format(1-cdf)} chance to have more wins than this.'
 
-    # Display results
-    st.subheader("Simulation Results")
+    ########## Create two columns (for session stats and line graph) ##########
+    col1, col2 = st.columns([1, 1])
+
+    ########## First column for session stats ##########
+    with col1:
+        # Display results
+        st.subheader("Simulation Results")
+        
+        st.text(f"""
+                Target: £{stats_target_amount} ({stats_target_pct}) ({stats_target_units} units)
+                Result: £{stats_result_amount} ({stats_result_pct}) ({stats_result_units} units)
+                
+                Total Spins: {stats_total_spins} (Wins: {stats_wins} / Losses: {stats_losses})
+                Cycles: {stats_cycles}
+                Win Rate: {stats_win_pct}     (vs expected 32.43%)
+                Likelihood: {message} 
+                            
+                Largest Bet: £{stats_largest_bet} (Index: {stats_fib_index} / Multipler: {stats_largest_multiplier}x)
+                Odds on largest Fib Index: {stats_odds}
+                """)
     
-    st.text(f"""
-            Target: £{stats_target_amount} ({stats_target_pct}) ({stats_target_units} units)
-            Result: £{stats_result_amount} ({stats_result_pct}) ({stats_result_units} units)
-            
-            Total Spins: {stats_total_spins} (Wins: {stats_wins} / Losses: {stats_losses})
-            Cycles: {stats_cycles}
-            Win Rate: {stats_win_pct}     (vs expected 32.43%)
-            This simulation won Only xxx% of all scenarios outperformed this one
-            
-            Largest Bet: £{stats_largest_bet} (Index: {stats_fib_index} / Multipler: {stats_largest_multiplier}x)
-            Odds on largest Fib Index: {stats_odds}
-            """)
-    
+    ########## Second column for line graph ##########
+    with col2:
+        st.subheader("Profit Over Time")
+        # Set 'spin' as the index to make the x-axis the spin number
+        line_chart_data = results_table[['spin', 'profit']]
+
+        # Create the main chart: a line with points (no config yet)
+        main_chart = (
+            alt.Chart(line_chart_data)
+            .mark_line(point=True)  # line + points
+            .encode(
+                x=alt.X('spin:Q', title='Spin'),
+                y=alt.Y('profit:Q', title='Profit')
+            )
+        )
+
+        # Create a rule (horizontal line) at y=0 (no config yet)
+        zero_line = (
+            alt.Chart(pd.DataFrame({'y': [0]}))
+            .mark_rule(color='white')
+            .encode(y='y:Q')
+        )
+
+        # Layer the main chart with the zero line, then configure
+        final_chart = (
+            alt.layer(main_chart, zero_line)
+            .properties(width=600, height=300)
+            .configure_mark(color='white')       # Make line and points white
+            .configure_view(strokeWidth=0)       # Remove border around chart
+)
+
+        st.altair_chart(final_chart, use_container_width=True)
  
+    ########## Spin by spin results ##########    
     st.subheader("Detailed Spin Results")
-    results_table = pd.DataFrame(results)
     st.dataframe(results_table, hide_index=True, use_container_width=False)
 
 
 # To Add:
-# Add Profit graph (0 is bold line)
-# Add binom distribution to stats
 # Format: balances / current bet / winnings / profit
+# Win/Loss %s
 # Wheel number colours
 # Bold where Fib index = 1
 # Alternate red and blue for cycles
 # Winnings "" where nil
 # Profit column heatmap
-# Win/Loss %s
+
 # Checkbox to switch between units
+# Better way to handle cycle
 

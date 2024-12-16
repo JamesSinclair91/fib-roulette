@@ -144,8 +144,7 @@ if st.button("Run Simulation"):
     # Create a session object
     session = Session(start_balance, unit_bet, max_bet or None, target_profit)
     
-    # Check to see if integers or floats should be used
-    use_integer = True if session.start_balance % 1 == 0 and session.unit_bet % 1 == 0 else False
+
     
     # Initialize an empty list to store results of each spin for this session
     results = []
@@ -270,12 +269,25 @@ if st.button("Run Simulation"):
  
     ########## Spin by spin results ##########    
     st.subheader("Detailed Spin Results")
-    st.dataframe(results_table, hide_index=True, use_container_width=False)
+    #st.dataframe(results_table, hide_index=True, use_container_width=False)
 
+    # Check to see if integers or floats should be used
+    use_integer = True if session.start_balance % 1 == 0 and session.unit_bet % 1 == 0 else False
+    
+    currency_columns = ['balance_pre_spin', 'current_bet' 'balance_post_spin', 'winnings', 'profit']
+    pct_columns = ['profit_pct', 'win_pct', 'loss_pct']
+
+    # Apply formatting to the DataFrame
+    # Assuming results_table is already created as a pandas DataFrame
+    styled_df = results_table.style.format({
+        **{col: '£{:,.0f}' if use_integer else '£{:,.2f}' for col in currency_columns},  # Apply currency formatting to selected columns
+        **{col: '{:,.2%}' for col in pct_columns}  # Apply currency formatting to selected columns
+    }) 
+    
+    st.write(styled_df)
 
 # To Add:
-# Format: balances / current bet / winnings / profit
-# Win/Loss %s
+
 # Wheel number colours
 # Bold where Fib index = 1
 # Alternate red and blue for cycles

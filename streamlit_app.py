@@ -263,7 +263,7 @@ if st.button("Run Simulation"):
             .properties(width=600, height=300)
             .configure_mark(color='white')       # Make line and points white
             .configure_view(strokeWidth=0)       # Remove border around chart
-)
+        )
 
         st.altair_chart(final_chart, use_container_width=True)
  
@@ -274,14 +274,17 @@ if st.button("Run Simulation"):
     # Check to see if integers or floats should be used
     use_integer = True if session.start_balance % 1 == 0 and session.unit_bet % 1 == 0 else False
     
-    currency_columns = ['balance_pre_spin', 'current_bet' 'balance_post_spin', 'winnings', 'profit']
-    pct_columns = ['profit_pct', 'win_pct', 'loss_pct']
+    currency_cols = ['balance_pre_spin', 'current_bet', 'balance_post_spin', 'winnings', 'profit']
+    pct_cols = ['profit_pct', 'win_pct', 'loss_pct']
+    
+    currency_format = '£{:,.0f}' if use_integer else '£{:,.2f}'
+    pct_format = '{:,.2%}'
 
     # Apply formatting to the DataFrame
     # Assuming results_table is already created as a pandas DataFrame
     styled_df = results_table.style.format({
-        **{col: '£{:,.0f}' if use_integer else '£{:,.2f}' for col in currency_columns},  # Apply currency formatting to selected columns
-        **{col: '{:,.2%}' for col in pct_columns}  # Apply currency formatting to selected columns
+        **{col: currency_format for col in currency_cols},  # Apply currency formatting to selected columns
+        **{col: pct_format for col in pct_cols}  # Apply currency formatting to selected columns
     }) 
     
     st.write(styled_df)
